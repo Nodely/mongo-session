@@ -31,7 +31,7 @@ func main() {
 		session.SetCookieName("session_id"),
 		session.SetSign([]byte("sign")),
 		session.SetStore(mongo.NewMongoStore(&mongo.Options{
-            Connection:"mongodb://localhost:27010/session-storage",
+            		Connection:"mongodb://localhost:27010/session-storage",
 		})),
 	)
 
