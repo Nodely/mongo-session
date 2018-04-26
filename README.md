@@ -1,6 +1,6 @@
 # mongo
 
-> A mongo-based session store for https://github.com/go-session/session/tree/v2.2.0
+> A mongo-based session store for http://gopkg.in/session.v2
 
 [![ReportCard][reportcard-image]][reportcard-url] [![GoDoc][godoc-image]][godoc-url] [![License][license-image]][license-url]
 
