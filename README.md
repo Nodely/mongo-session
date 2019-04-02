@@ -9,7 +9,7 @@
 ### Download and install
 
 ```bash
-$ go get -u -v gopkg.in/nodely/mongo-session.v1
+$ go get -u -v gopkg.in/nodely/mongo-session.v2
 ```
 
 ### Create file `server.go`
@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"gopkg.in/nodely/mongo-session.v1"
-	"gopkg.in/session.v2"
+	"gopkg.in/nodely/mongo-session.v2"
+	"gopkg.in/session.v3"
 )
 
 func main() {

@@ -6,10 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/session.v2"
-	"github.com/globalsign/mgo"
 	"errors"
+
+	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
+	"gopkg.in/session.v3"
 )
 
 var (
@@ -34,7 +35,7 @@ func NewMongoStore(opt *Options) session.ManagerStore {
 
 type managerStore struct {
 	sess *mgo.Session
-	cli *mgo.Collection
+	cli  *mgo.Collection
 }
 
 func (s *managerStore) getValue(sid string) (r record, err error) {
@@ -42,8 +43,8 @@ func (s *managerStore) getValue(sid string) (r record, err error) {
 	return
 }
 
-func (s *managerStore) parseValue(value string) (map[string]string, error) {
-	var values map[string]string
+func (s *managerStore) parseValue(value string) (map[string]interface{}, error) {
+	var values map[string]interface{}
 
 	if len(value) > 0 {
 		err := json.Unmarshal([]byte(value), &values)
@@ -53,17 +54,17 @@ func (s *managerStore) parseValue(value string) (map[string]string, error) {
 	}
 
 	if values == nil {
-		values = make(map[string]string)
+		values = make(map[string]interface{})
 	}
 	return values, nil
 }
 
 func (s *managerStore) Create(ctx context.Context, sid string, expired int64) (session.Store, error) {
-	values := make(map[string]string)
+	values := make(map[string]interface{})
 
 	err := s.cli.Insert(record{
-		Id: bson.NewObjectId(),
-		Sid: sid,
+		ID:   bson.NewObjectId(),
+		Sid:  sid,
 		Time: time.Now(),
 	})
 	if err != nil {
@@ -81,10 +82,26 @@ func (s *managerStore) Update(ctx context.Context, sid string, expired int64) (s
 
 	r.Time = time.Now().Add(time.Second * time.Duration(expired))
 
-	err = s.cli.UpdateId(r.Id, r)
+	err = s.cli.UpdateId(r.ID, r)
 	if err != nil {
 		return nil, err
 	}
+
+	values, err := s.parseValue(r.Values)
+	if err != nil {
+		return nil, err
+	}
+
+	return &store{ctx: ctx, sid: sid, cli: s.cli, expired: expired, values: values}, nil
+}
+
+func (s *managerStore) Refresh(ctx context.Context, oldsid, sid string, expired int64) (session.Store, error) {
+	r, err := s.getValue(sid)
+	if err != nil {
+		return nil, err
+	}
+
+	r.Time = time.Now().Add(time.Second * time.Duration(expired))
 
 	values, err := s.parseValue(r.Values)
 	if err != nil {
@@ -116,11 +133,11 @@ func (s *managerStore) Close() error {
 type store struct {
 	sid     string
 	cli     *mgo.Collection
-	sess     *mgo.Session
+	sess    *mgo.Session
 	expired int64
-	values  map[string]string
+	values  map[string]interface{}
 	sync.RWMutex
-	ctx     context.Context
+	ctx context.Context
 }
 
 func (s *store) Context() context.Context {
@@ -131,20 +148,20 @@ func (s *store) SessionID() string {
 	return s.sid
 }
 
-func (s *store) Set(key, value string) {
+func (s *store) Set(key string, value interface{}) {
 	s.Lock()
 	s.values[key] = value
 	s.Unlock()
 }
 
-func (s *store) Get(key string) (string, bool) {
+func (s *store) Get(key string) (interface{}, bool) {
 	s.RLock()
 	defer s.RUnlock()
 	val, ok := s.values[key]
 	return val, ok
 }
 
-func (s *store) Delete(key string) string {
+func (s *store) Delete(key string) interface{} {
 	s.RLock()
 	v, ok := s.values[key]
 	s.RUnlock()
@@ -158,7 +175,7 @@ func (s *store) Delete(key string) string {
 
 func (s *store) Flush() error {
 	s.Lock()
-	s.values = make(map[string]string)
+	s.values = make(map[string]interface{})
 	s.Unlock()
 	return s.Save()
 }
@@ -181,5 +198,5 @@ func (s *store) Save() error {
 
 	r.Values = value
 
-	return s.cli.UpdateId(r.Id, r)
+	return s.cli.UpdateId(r.ID, r)
 }

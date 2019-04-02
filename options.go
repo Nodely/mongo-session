@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"time"
+
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
 )
@@ -19,7 +20,7 @@ type Options struct {
 }
 
 type record struct {
-	Id     bson.ObjectId `bson:"_id"`
+	ID     bson.ObjectId `bson:"_id"`
 	Sid    string        `bson:"sid"`
 	Time   time.Time     `bson:"time"`
 	Values string        `bson:"values"`
