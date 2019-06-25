@@ -8,8 +8,9 @@ import (
 
 	"errors"
 
-	"github.com/globalsign/mgo"
-	"github.com/globalsign/mgo/bson"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"gopkg.in/session.v3"
 )
 
@@ -19,27 +20,35 @@ var (
 )
 
 // NewMongoStore Create an instance of a mongo store
-func NewMongoStore(opt *Options) session.ManagerStore {
+func NewMongoStore(opt *Options) (session.ManagerStore, error) {
 	if opt == nil {
 		panic("Option cannot be nil")
 	}
-	sess, err := mgo.DialWithInfo(opt.mongoOptions())
-	if err != nil {
-		errors.New("Unable to connect: " + err.Error())
-	}
-	sess.SetMode(mgo.Monotonic, true)
-	sess = sess.Clone()
 
-	return &managerStore{sess: sess, cli: sess.DB(opt.DB).C(opt.Collection)}
+	client, err := mongo.NewClient(options.Client().ApplyURI(opt.Connection))
+	if err != nil {
+		return nil, errors.New("Unable to get connection string: " + err.Error())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	err = client.Connect(ctx)
+
+	if err != nil {
+		return nil, errors.New("Unable to connect: " + err.Error())
+	}
+
+	return &managerStore{client: client, col: client.Database(opt.DB).Collection(opt.Collection), ctx: ctx}, nil
 }
 
 type managerStore struct {
-	sess *mgo.Session
-	cli  *mgo.Collection
+	client *mongo.Client
+	col    *mongo.Collection
+	ctx    context.Context
 }
 
 func (s *managerStore) getValue(sid string) (r record, err error) {
-	err = s.cli.Find(bson.M{"sid": sid}).One(&r)
+	err = s.col.FindOne(s.ctx, bson.M{"sid": sid}).Decode(&r)
 	return
 }
 
@@ -62,8 +71,7 @@ func (s *managerStore) parseValue(value string) (map[string]interface{}, error) 
 func (s *managerStore) Create(ctx context.Context, sid string, expired int64) (session.Store, error) {
 	values := make(map[string]interface{})
 
-	err := s.cli.Insert(record{
-		ID:   bson.NewObjectId(),
+	_, err := s.col.InsertOne(s.ctx, record{
 		Sid:  sid,
 		Time: time.Now(),
 	})
@@ -71,7 +79,7 @@ func (s *managerStore) Create(ctx context.Context, sid string, expired int64) (s
 		return nil, err
 	}
 
-	return &store{ctx: ctx, sid: sid, cli: s.cli, expired: expired, values: values}, nil
+	return &store{ctx: ctx, sid: sid, cli: s.col, expired: expired, values: values}, nil
 }
 
 func (s *managerStore) Update(ctx context.Context, sid string, expired int64) (session.Store, error) {
@@ -82,7 +90,7 @@ func (s *managerStore) Update(ctx context.Context, sid string, expired int64) (s
 
 	r.Time = time.Now().Add(time.Second * time.Duration(expired))
 
-	err = s.cli.UpdateId(r.ID, r)
+	_, err = s.col.UpdateOne(ctx, bson.M{"_id": r.ID}, r)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +100,7 @@ func (s *managerStore) Update(ctx context.Context, sid string, expired int64) (s
 		return nil, err
 	}
 
-	return &store{ctx: ctx, sid: sid, cli: s.cli, expired: expired, values: values}, nil
+	return &store{ctx: ctx, sid: sid, cli: s.col, expired: expired, values: values}, nil
 }
 
 func (s *managerStore) Refresh(ctx context.Context, oldsid, sid string, expired int64) (session.Store, error) {
@@ -108,17 +116,17 @@ func (s *managerStore) Refresh(ctx context.Context, oldsid, sid string, expired 
 		return nil, err
 	}
 
-	return &store{ctx: ctx, sid: sid, cli: s.cli, expired: expired, values: values}, nil
+	return &store{ctx: ctx, sid: sid, cli: s.col, expired: expired, values: values}, nil
 }
 
 func (s *managerStore) Delete(_ context.Context, sid string) error {
-	err := s.cli.Remove(bson.M{"sid": sid})
+	_, err := s.col.DeleteOne(s.ctx, bson.M{"sid": sid})
 	return err
 }
 
 func (s *managerStore) Check(_ context.Context, sid string) (bool, error) {
 	var r record
-	err := s.cli.Find(bson.M{"sid": sid}).One(&r)
+	err := s.col.FindOne(s.ctx, bson.M{"sid": sid}).Decode(&r)
 	if err != nil {
 		return false, err
 	}
@@ -126,14 +134,13 @@ func (s *managerStore) Check(_ context.Context, sid string) (bool, error) {
 }
 
 func (s *managerStore) Close() error {
-	defer s.sess.Close()
+	defer s.client.Disconnect(s.ctx)
 	return nil
 }
 
 type store struct {
 	sid     string
-	cli     *mgo.Collection
-	sess    *mgo.Session
+	cli     *mongo.Collection
 	expired int64
 	values  map[string]interface{}
 	sync.RWMutex
@@ -192,11 +199,12 @@ func (s *store) Save() error {
 
 	// find id
 	var r record
-	if err := s.cli.Find(bson.M{"sid": s.sid}).One(&r); err != nil {
+	if err := s.cli.FindOne(s.ctx, bson.M{"sid": s.sid}).Decode(&r); err != nil {
 		return err
 	}
 
 	r.Values = value
 
-	return s.cli.UpdateId(r.ID, r)
+	res := s.cli.FindOneAndUpdate(s.ctx, bson.M{"_id": r.ID}, r)
+	return res.Err()
 }
