@@ -207,6 +207,6 @@ func (s *store) Save() error {
 
 	r.Values = value
 
-	res := s.cli.FindOneAndUpdate(context.TODO(), bson.M{"_id": r.ID}, r)
+	res := s.cli.FindOneAndUpdate(context.TODO(), bson.M{"_id": r.ID}, bson.M{"$set": r})
 	return res.Err()
 }
