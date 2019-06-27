@@ -31,8 +31,7 @@ func NewMongoStore(opt *Options) (session.ManagerStore, error) {
 		return nil, errors.New("Unable to get connection string: " + err.Error())
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
+	ctx, _ := context.WithTimeout(context.Background(), 20*time.Second)
 	err = client.Connect(ctx)
 
 	if err != nil {
@@ -78,7 +77,7 @@ func (s *managerStore) Create(ctx context.Context, sid string, expired int64) (s
 		Time: time.Now(),
 	})
 	if err != nil {
-		s.logger.Errorf("Store.Crate: %s", err.Error())
+		s.logger.Errorf("Store.Create: %s", err.Error())
 		return nil, err
 	}
 
@@ -95,6 +94,7 @@ func (s *managerStore) Update(ctx context.Context, sid string, expired int64) (s
 
 	_, err = s.col.UpdateOne(ctx, bson.M{"_id": r.ID}, r)
 	if err != nil {
+		s.logger.Errorf("Store.Update: %s", err.Error())
 		return nil, err
 	}
 
@@ -131,6 +131,7 @@ func (s *managerStore) Check(_ context.Context, sid string) (bool, error) {
 	var r record
 	err := s.col.FindOne(s.ctx, bson.M{"sid": sid}).Decode(&r)
 	if err != nil {
+		s.logger.Errorf("Store.Check: %s", err.Error())
 		return false, err
 	}
 	return true, nil
