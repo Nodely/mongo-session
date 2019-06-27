@@ -127,10 +127,9 @@ func (s *managerStore) Delete(ctx context.Context, sid string) error {
 
 func (s *managerStore) Check(ctx context.Context, sid string) (bool, error) {
 	var r record
-	err := s.col.FindOne(ctx, bson.M{"sid": sid}).Decode(&r)
-	if err != nil {
+	if err := s.col.FindOne(ctx, bson.M{"sid": sid}).Decode(&r); err != nil {
 		s.logger.Errorf("Store.Check: %s", err.Error())
-		return false, err
+		return false, nil
 	}
 	return true, nil
 }
