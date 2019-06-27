@@ -39,7 +39,7 @@ func NewMongoStore(opt *Options) (session.ManagerStore, error) {
 		return nil, errors.New("Unable to connect: " + err.Error())
 	}
 
-	return &managerStore{logger: opts.Logger, client: client, col: client.Database(opt.DB).Collection(opt.Collection), ctx: ctx}, nil
+	return &managerStore{logger: opt.Logger, client: client, col: client.Database(opt.DB).Collection(opt.Collection), ctx: ctx}, nil
 }
 
 type managerStore struct {
