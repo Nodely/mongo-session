@@ -38,13 +38,14 @@ func NewMongoStore(opt *Options) (session.ManagerStore, error) {
 		return nil, errors.New("Unable to connect: " + err.Error())
 	}
 
-	return &managerStore{client: client, col: client.Database(opt.DB).Collection(opt.Collection), ctx: ctx}, nil
+	return &managerStore{logger: opts.Logger, client: client, col: client.Database(opt.DB).Collection(opt.Collection), ctx: ctx}, nil
 }
 
 type managerStore struct {
 	client *mongo.Client
 	col    *mongo.Collection
 	ctx    context.Context
+	logger *logging.Logger
 }
 
 func (s *managerStore) getValue(sid string) (r record, err error) {
@@ -76,6 +77,7 @@ func (s *managerStore) Create(ctx context.Context, sid string, expired int64) (s
 		Time: time.Now(),
 	})
 	if err != nil {
+		s.logger.Errorf("Store.Crate: %s", err.Error())
 		return nil, err
 	}
 

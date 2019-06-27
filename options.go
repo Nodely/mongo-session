@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/op/go-logging"
 )
 
 // Options Mongo parameter options
@@ -16,6 +17,9 @@ type Options struct {
 
 	// database name
 	DB string
+
+	// Logger
+	Logger *logging.Logger
 }
 
 type record struct {
