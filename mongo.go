@@ -8,10 +8,10 @@ import (
 
 	"errors"
 
+	"github.com/op/go-logging"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"github.com/op/go-logging"
 	"gopkg.in/session.v3"
 )
 
@@ -26,30 +26,28 @@ func NewMongoStore(opt *Options) (session.ManagerStore, error) {
 		panic("Option cannot be nil")
 	}
 
-	client, err := mongo.NewClient(options.Client().ApplyURI(opt.Connection))
-	if err != nil {
-		return nil, errors.New("Unable to get connection string: " + err.Error())
-	}
-
-	ctx, _ := context.WithTimeout(context.Background(), 20*time.Second)
-	err = client.Connect(ctx)
-
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(opt.Connection))
 	if err != nil {
 		return nil, errors.New("Unable to connect: " + err.Error())
 	}
 
-	return &managerStore{logger: opt.Logger, client: client, col: client.Database(opt.DB).Collection(opt.Collection), ctx: ctx}, nil
+	// Check the connection
+	err = client.Ping(context.TODO(), nil)
+	if err != nil {
+		return nil, errors.New("Unable to ping: " + err.Error())
+	}
+
+	return &managerStore{logger: opt.Logger, client: client, col: client.Database(opt.DB).Collection(opt.Collection)}, nil
 }
 
 type managerStore struct {
 	client *mongo.Client
 	col    *mongo.Collection
-	ctx    context.Context
 	logger *logging.Logger
 }
 
 func (s *managerStore) getValue(sid string) (r record, err error) {
-	err = s.col.FindOne(s.ctx, bson.M{"sid": sid}).Decode(&r)
+	err = s.col.FindOne(context.TODO(), bson.M{"sid": sid}).Decode(&r)
 	return
 }
 
@@ -72,7 +70,7 @@ func (s *managerStore) parseValue(value string) (map[string]interface{}, error) 
 func (s *managerStore) Create(ctx context.Context, sid string, expired int64) (session.Store, error) {
 	values := make(map[string]interface{})
 
-	_, err := s.col.InsertOne(s.ctx, record{
+	_, err := s.col.InsertOne(ctx, record{
 		Sid:  sid,
 		Time: time.Now(),
 	})
@@ -92,7 +90,7 @@ func (s *managerStore) Update(ctx context.Context, sid string, expired int64) (s
 
 	r.Time = time.Now().Add(time.Second * time.Duration(expired))
 
-	_, err = s.col.UpdateOne(ctx, bson.M{"_id": r.ID}, r)
+	_, err = s.col.UpdateOne(ctx, bson.M{"_id": r.ID}, bson.M{"$set": r})
 	if err != nil {
 		s.logger.Errorf("Store.Update: %s", err.Error())
 		return nil, err
@@ -122,14 +120,14 @@ func (s *managerStore) Refresh(ctx context.Context, oldsid, sid string, expired 
 	return &store{ctx: ctx, sid: sid, cli: s.col, expired: expired, values: values}, nil
 }
 
-func (s *managerStore) Delete(_ context.Context, sid string) error {
-	_, err := s.col.DeleteOne(s.ctx, bson.M{"sid": sid})
+func (s *managerStore) Delete(ctx context.Context, sid string) error {
+	_, err := s.col.DeleteOne(ctx, bson.M{"sid": sid})
 	return err
 }
 
-func (s *managerStore) Check(_ context.Context, sid string) (bool, error) {
+func (s *managerStore) Check(ctx context.Context, sid string) (bool, error) {
 	var r record
-	err := s.col.FindOne(s.ctx, bson.M{"sid": sid}).Decode(&r)
+	err := s.col.FindOne(ctx, bson.M{"sid": sid}).Decode(&r)
 	if err != nil {
 		s.logger.Errorf("Store.Check: %s", err.Error())
 		return false, err
@@ -138,7 +136,7 @@ func (s *managerStore) Check(_ context.Context, sid string) (bool, error) {
 }
 
 func (s *managerStore) Close() error {
-	defer s.client.Disconnect(s.ctx)
+	defer s.client.Disconnect(context.TODO())
 	return nil
 }
 
@@ -203,12 +201,12 @@ func (s *store) Save() error {
 
 	// find id
 	var r record
-	if err := s.cli.FindOne(s.ctx, bson.M{"sid": s.sid}).Decode(&r); err != nil {
+	if err := s.cli.FindOne(context.TODO(), bson.M{"sid": s.sid}).Decode(&r); err != nil {
 		return err
 	}
 
 	r.Values = value
 
-	res := s.cli.FindOneAndUpdate(s.ctx, bson.M{"_id": r.ID}, r)
+	res := s.cli.FindOneAndUpdate(context.TODO(), bson.M{"_id": r.ID}, r)
 	return res.Err()
 }
