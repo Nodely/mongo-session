@@ -3,8 +3,8 @@ package mongo
 import (
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"github.com/op/go-logging"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Options Mongo parameter options
@@ -23,7 +23,7 @@ type Options struct {
 }
 
 type record struct {
-	ID     primitive.ObjectID `bson:"_id"`
+	ID     primitive.ObjectID `bson:"_id,omitempty"`
 	Sid    string             `bson:"sid"`
 	Time   time.Time          `bson:"time"`
 	Values string             `bson:"values"`
